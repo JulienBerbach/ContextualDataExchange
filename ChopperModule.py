@@ -1,25 +1,26 @@
 # This module writes and reads from the database
+# expected "Database" is a database oject from class connection in DatabaseInterface module
 
 import DatabaseInterface
 
 # this functions adds an entity in the database if it is not existing yet
 # expected element is a string like 'A'
 # it returns the instance number
-def AddFoundKey(element):
-    return DatabaseInterface.AddFoundKey(element)
+def AddFoundKey(Database, element):
+    return Database.AddFoundKey(element)
 
-# recursive function that processes a nested JSON generated from a tree 
+# recursive function that processes a nested JSON generated from a tree
 # the expected input argument is an python list containing dictionaries or simple elements
 #  [{ A : B, C : D }, { X : [ D , E ] }, K , { F : { V : W } } ]
 # the function returns a list of single entities (already created) that must be linked
 #  by the caller
 # [ A, C, X, K , F]
-def processJSON(local_JSON):
+def processJSON(Database, local_JSON):
 
-    KeysFoundSoFar = list(()) 
+    KeysFoundSoFar = list(())
     # Python list of keys that will be returned to the caller, for possible linking
     # to something on a higher level
-   
+
     print("localJSON : "+ str(local_JSON))
 
     # loop on the list elements, in [..]
@@ -29,51 +30,51 @@ def processJSON(local_JSON):
         if isinstance(element, dict):
         # loop on the keys of the elements in {..}
             for key in element:
-                
+
                 # check if the type of the element is of a simple type
                 if (isinstance(element[key], str) or isinstance(element[key], int) or
                     isinstance(element[key], float) or isinstance(element[key], bool)):
                     # a single dictionary element is added
-                    NewElement = dict(())
-                    NewElement[key] = element[key]
-                    TuplesAdded = DatabaseInterface.ProcessFoundTuples(NewElement)
-                
+                    NewElement = {key : []} # create dictionary, it will hold only one element
+                    NewElement[key].append(element[key])
+                    TuplesAdded = Database.ProcessFoundTuples(NewElement)
+
                 # check if the type of the element could be an array [..]
                 elif isinstance(element[key], list):
                     # it is a list then we call the function recursively
-                    EntitiesBelow = processJSON(element[key])
+                    EntitiesBelow = processJSON(Database, element[key])
                     ## here we have to link the entities found below
                     NewElements = {key : []} # create dictionary that will contain the found links
                     for i in EntitiesBelow:
-                        NewElements[key].append(i) # append new element 
-                    TuplesAdded = DatabaseInterface.ProcessFoundTuples(NewElements)
+                        NewElements[key].append(i) # append new element
+                    TuplesAdded = Database.ProcessFoundTuples(NewElements)
 
                 # check if the type of element below is a dictionary {..}
                 elif isinstance(element[key], dict):
-                    # we call the function recursively, the element must be transformed into 
+                    # we call the function recursively, the element must be transformed into
                     # a list (of one element) before continuing
                     listToProcess = []
                     listToProcess.append(element[key])
-                    EntitiesBelow = processJSON(listToProcess)
+                    EntitiesBelow = processJSON(Database, listToProcess)
                     ## here we have to link the entities found below
                     NewElements = {key : []} # create dictionary that will contain the found links
                     for i in EntitiesBelow:
-                        NewElements[key].append(i) # append new element 
-                    TuplesAdded = DatabaseInterface.ProcessFoundTuples(NewElements)
+                        NewElements[key].append(i) # append new element
+                    TuplesAdded = Database.ProcessFoundTuples(NewElements)
 
                 else:
                     print('ProcessJSON, unknown element type : ' + str(element[key]))
 
-            # append the element that has been returned by the add process   
-            for key in TuplesAdded:   
+            # append the element that has been returned by the add process
+            for key in TuplesAdded:
                 KeysFoundSoFar.append(key)
 
         elif (isinstance(element, str) or isinstance(element, int) or
-              isinstance(element, float) or isinstance(element, bool)):
+            isinstance(element, float) or isinstance(element, bool)):
             # add the key to the list that will be returned to the caller, for possible linking
             # nothing below, so no need to process a tuple, just returning the element found above
             KeysFoundSoFar.append(element)
-            
+
         else:
             print('processJSON, unknow element type : ' + str(element))
 
@@ -86,18 +87,18 @@ def processJSON(local_JSON):
 
 # recursive function that replaces nodes with deeper one until no bypass is required
 # the inputs are two set, the one of elements to bypass, the working one
-def BypassedSet(SetToBypass, WorkingSet):
+def BypassedSet(Database, SetToBypass, WorkingSet):
     for i in WorkingSet.intersection(SetToBypass):
         # this pass consists into removing all bypass elements found
         WorkingSet.remove(i)
         # search for elements linked to i
-        LinkedSet = DatabaseInterface.LinkedToElements(i)
+        LinkedSet = Database.LinkedToElements(i)
         # add new set elements found to working set
         WorkingSet.update(LinkedSet)
     # check if there are still nodes to bypass
     if WorkingSet.intersection(SetToBypass): # this is false is the intersection is empty
         # call for reiterate pass
-        NewSet = BypassedSet(SetToBypass, WorkingSet) 
+        NewSet = BypassedSet(Database, SetToBypass, WorkingSet)
         return NewSet
     else:
         return WorkingSet
@@ -110,7 +111,7 @@ def RemoveUIDSuffix(element):
     if h.isnumeric():
         return element.rstrip('-' + h)
     else:
-        raise Exception('The database element is expected to have at the end a dash and a number') 
+        raise Exception('The database element is expected to have at the end a dash and a number')
 
 # function that simply removes the unicity suffix like "-1" on a nested object of dictionaries and lists
 # the input variable "tree" is a dictionary
@@ -137,9 +138,6 @@ def RemoveTreeUIDSuffix(tree):
         else:
             raise Exception('Unknown element type found in dictionary')
     return newTree
-      
-
-
 
 # function that returns a tree in form of a JSON file from database (python dictionary)
 # the input is the searched top node (string) with an instance number as suffix, like 'A-1'
@@ -151,27 +149,27 @@ def RemoveTreeUIDSuffix(tree):
 # depth = 2 : returns something like { 'Q-1': [ {'A-2' : [ 'A1-1', 'A2-1' ]}, 'B-5' , 'C-1' ]}
 # if NodesToBypass = {'A'}, the above is returned like : { 'Q-1' : [ A1', 'A2', 'B' , 'C' ]}
 # if NodesToBypass = {'A1'}, the 2 lines above is returned as { 'Q-1' : [ {'A-2': [ A2']}, 'B' , 'C' ]}
-def ReadTreeFromBase(TopNode, RequiredDepth = 1 , NodesToBypass = {}):
-    
+def ReadTreeFromBase(Database, TopNode, RequiredDepth = 1 , NodesToBypass = {}):
+
     theJSON = dict()
     print("ReadTreeFromBase")
     print("top node = " + TopNode)
-  
+
     # check if TopNode exists
-    if DatabaseInterface.ElementExists(TopNode):
+    if Database.ElementExists(TopNode):
         # read all the elements linked to TopNode
-        scanResult = DatabaseInterface.LinkedToElements(TopNode)
-       
+        scanResult = Database.LinkedToElements(TopNode)
+
         # remove nodes to bypass until there are none of these nodes anymore in the set
         if NodesToBypass == {}:
             LinkedSet = scanResult
         else:
-            LinkedSet = BypassedSet(NodesToBypass, scanResult)
+            LinkedSet = BypassedSet(Database, NodesToBypass, scanResult)
         CurrentRequiredDepth = RequiredDepth - 1
         if (not LinkedSet): # if the result is empty
             return dict()
         else:
-            # now we have found a set to link 
+            # now we have found a set to link
             theJSON[TopNode] = [] # declare     the elements as a list
             for j in LinkedSet:
                 # add the element to the list, we construct {A : [A1, A2, A3]}
@@ -184,8 +182,8 @@ def ReadTreeFromBase(TopNode, RequiredDepth = 1 , NodesToBypass = {}):
                 # loop the table elements and get the tree below filled
                 for j in range(len(theJSON[TopNode])):
                     # in this call, the top node is given by MainNode][j]
-                    LowerResult = ReadTreeFromBase(theJSON[TopNode][j], CurrentRequiredDepth, NodesToBypass)
-            
+                    LowerResult = ReadTreeFromBase(Database, theJSON[TopNode][j], CurrentRequiredDepth, NodesToBypass)
+
                     # if not empty, add the result found below, otherwise do nothing
                     if LowerResult:
                         theJSON[TopNode][j] = LowerResult
@@ -199,12 +197,12 @@ def ReadTreeFromBase(TopNode, RequiredDepth = 1 , NodesToBypass = {}):
 # according to all existing instances of a key
 # ex: for key "A" it will return a possible tree for "A-1", "A-2", "A-3" etc.
 # input argument is the generic key name, without suffix
-def ReadAllTreesFromBase(TopNode, RequiredDepth = 1, NodesToBypass = {}):
+def ReadAllTreesFromBase(Database, TopNode, RequiredDepth = 1, NodesToBypass = {}):
 
-    if DatabaseInterface.GenericKeyElementExists(TopNode):
+    if Database.GenericKeyElementExists(TopNode):
         returnedSet = list()
-        for i in range (1, 1 + DatabaseInterface.LastInstanceIndex(TopNode)):
-            returnedSet.append(ReadTreeFromBase(TopNode + '-' + str(i), RequiredDepth, NodesToBypass))
+        for i in range (1, 1 + Database.LastInstanceIndex(TopNode)):
+            returnedSet.append(ReadTreeFromBase(Database, TopNode + '-' + str(i), RequiredDepth, NodesToBypass))
         return returnedSet
     else:
         return list()

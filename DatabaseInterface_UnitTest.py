@@ -30,11 +30,13 @@ ResultA = Database.InstancesOfNode('A')
 ResultD = Database.InstancesOfNode('D')
 
 # A has to have 2 instances, D has to have 3 instances
-if ResultA != ('A-1', 'A-2'):
+if ResultA != {'A-1', 'A-2'}:
     print ("InstancesOfNode returns : " + str(ResultA))
+  
 
-if ResultD != ('D-1', 'D-2', 'D-3'):
-    print ("InstancesOfNode returns : " + str(ResultD))  
+if ResultD != {'D-1', 'D-2', 'D-3'}:
+    print ("InstancesOfNode returns : " + str(ResultD)) 
+
 
 
 

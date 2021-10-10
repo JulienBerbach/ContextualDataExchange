@@ -1,5 +1,5 @@
 import DatabaseInterface
-import redis
+
 
 # create python object for redis database
 # database has to be started separately with command ./redis-server in src directory
